@@ -3,6 +3,7 @@ package ai.editor.service;
 import ai.editor.model.DocumentTemplateDetails;
 import ai.editor.repository.DocumentFileRepository;
 import ai.editor.repository.DocumentTemplateRepository;
+import ai.editor.repository.DocumentTemplateVariableRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1",
@@ -32,6 +34,9 @@ class DocumentTemplateServiceTest {
 
     @Autowired
     private DocumentFileRepository documentFileRepository;
+
+    @Autowired
+    private DocumentTemplateVariableRepository documentTemplateVariableRepository;
 
     @Test
     void createTemplateStoresHtmlAndOriginalFile() throws IOException {
@@ -52,6 +57,72 @@ class DocumentTemplateServiceTest {
         assertEquals("Тестовый шаблон", details.name());
         assertEquals("sample.docx", details.sourceFileName());
         assertTrue(details.htmlContent().contains("Привет из тестового документа"));
+    }
+
+    @Test
+    void createTemplateExtractsVariablesFromDocument() throws IOException {
+        byte[] docx = createMinimalDocx("{{{CLIENT_NAME}}} и {{{ГОРОД_1}}}");
+
+        Long templateId = documentTemplateService.createTemplate(
+                "Переменные",
+                "variables.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                docx
+        );
+
+        DocumentTemplateDetails details = documentTemplateService.getDetails(templateId);
+
+        assertEquals(2, documentTemplateVariableRepository.count());
+        assertIterableEquals(
+                java.util.List.of("CLIENT_NAME", "ГОРОД_1"),
+                details.variables().stream().map(variable -> variable.name()).toList()
+        );
+    }
+
+    @Test
+    void updateHtmlContentSynchronizesVariablesAndKeepsDescriptions() throws IOException {
+        byte[] docx = createMinimalDocx("{{{A}}} {{{B}}}");
+
+        Long templateId = documentTemplateService.createTemplate(
+                "Синхронизация",
+                "sync.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                docx
+        );
+
+        DocumentTemplateDetails beforeUpdate = documentTemplateService.getDetails(templateId);
+        Long variableAId = beforeUpdate.variables().stream()
+                .filter(variable -> "A".equals(variable.name()))
+                .findFirst()
+                .orElseThrow()
+                .id();
+
+        documentTemplateService.updateVariableDescription(templateId, variableAId, "Описание A");
+        documentTemplateService.updateHtmlContent(templateId, "<p>{{{A}}} {{{C}}}</p>");
+
+        DocumentTemplateDetails afterUpdate = documentTemplateService.getDetails(templateId);
+
+        assertEquals(2, documentTemplateVariableRepository.count());
+        assertIterableEquals(
+                java.util.List.of("A", "C"),
+                afterUpdate.variables().stream().map(variable -> variable.name()).toList()
+        );
+        assertEquals(
+                "Описание A",
+                afterUpdate.variables().stream()
+                        .filter(variable -> "A".equals(variable.name()))
+                        .findFirst()
+                        .orElseThrow()
+                        .description()
+        );
+        assertEquals(
+                "",
+                afterUpdate.variables().stream()
+                        .filter(variable -> "C".equals(variable.name()))
+                        .findFirst()
+                        .orElseThrow()
+                        .description()
+        );
     }
 
     private byte[] createMinimalDocx(String text) throws IOException {

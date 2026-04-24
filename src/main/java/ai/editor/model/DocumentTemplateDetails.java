@@ -1,6 +1,7 @@
 package ai.editor.model;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record DocumentTemplateDetails(
         Long id,
@@ -9,6 +10,7 @@ public record DocumentTemplateDetails(
         Long sourceFileId,
         String sourceFileName,
         String sourceContentType,
-        String htmlContent
+        String htmlContent,
+        List<DocumentTemplateVariableItem> variables
 ) {
 }
