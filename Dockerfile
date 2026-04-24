@@ -8,11 +8,11 @@ COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 RUN chmod +x mvnw
 
-RUN --mount=type=cache,id=cacheKey-maven-deps,target=/root/.m2 ./mvnw -B dependency:go-offline
+RUN ./mvnw -B dependency:go-offline
 
 COPY src/ src/
 
-RUN --mount=type=cache,id=cacheKey-maven-build,target=/root/.m2  ./mvnw -B clean package -DskipTests
+RUN ./mvnw -B clean package -DskipTests
 
 FROM eclipse-temurin:25-jdk
 
